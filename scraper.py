@@ -141,12 +141,19 @@ def fetch_via_zenrows(url: str, js_render: bool = True, retornar_detalhes: bool 
             "proxy_country": "br",
             "wait": "3000",  # espera 3s após carregar, para conteúdo carregado via JS aparecer
         }
+        req_preparado = requests.Request("GET", ZENROWS_ENDPOINT, params=params).prepare()
+        logger.info(f"URL exata enviada ao ZenRows: {req_preparado.url}")
         resp = requests.get(ZENROWS_ENDPOINT, params=params, timeout=90)
         if resp.status_code == 200:
-            return {"html": resp.text, "status_code": 200} if retornar_detalhes else resp.text
+            return {"html": resp.text, "status_code": 200, "url_enviada_zenrows": req_preparado.url} if retornar_detalhes else resp.text
         logger.warning(f"ZenRows retornou status {resp.status_code} para {url}: {resp.text[:300]}")
         if retornar_detalhes:
-            return {"erro": f"ZenRows retornou status {resp.status_code}", "corpo_resposta": resp.text[:500], "status_code": resp.status_code}
+            return {
+                "erro": f"ZenRows retornou status {resp.status_code}",
+                "corpo_resposta": resp.text[:500],
+                "status_code": resp.status_code,
+                "url_enviada_zenrows": req_preparado.url,
+            }
         return None
     except requests.exceptions.Timeout:
         if retornar_detalhes:
