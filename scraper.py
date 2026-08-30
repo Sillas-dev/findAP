@@ -407,6 +407,15 @@ def debug_fetch(url: str) -> dict:
                             data_attrs.add(attr)
                 resultado["atributos_data_encontrados"] = sorted(data_attrs)[:30]
 
+                # Amostra de hrefs reais contendo padrões prováveis de anúncio —
+                # essencial para ajustar a regex de identificação de cards
+                hrefs_amostra = set()
+                for a in soup.find_all("a", href=True):
+                    href = a["href"]
+                    if "/imovel" in href or "/propriedades/" in href or re.search(r"\d{5,}", href):
+                        hrefs_amostra.add(href)
+                resultado["amostra_hrefs_anuncio"] = sorted(hrefs_amostra)[:15]
+
     return resultado
 
 
