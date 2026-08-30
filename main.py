@@ -2,7 +2,8 @@
 API do AptoFinder Salvador.
 Executar localmente: uvicorn main:app --reload
 """
-from fastapi import FastAPI, Depends, Query
+from fastapi import FastAPI, Depends, Query, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -28,6 +29,15 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     init_db()
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Mostra o erro real em vez de um '500 Internal Server Error' genérico — ajuda a diagnosticar sem precisar dos logs do Render."""
+    return JSONResponse(
+        status_code=500,
+        content={"erro": str(exc)[:500], "tipo": type(exc).__name__},
+    )
 
 
 def apartment_to_dict(apt: Apartment) -> dict:
@@ -114,28 +124,45 @@ def run_scrape(
     manter o controle total sobre quando o scraper roda.
     """
     dados = scrape_search(cidade_slug, filtros_slug, neighborhood, city, max_paginas)
-    novos, atualizados = 0, 0
+    novos, atualizados, ignorados = 0, 0, 0
+    erros = []
 
     for item in dados:
-        existente = db.query(Apartment).filter(Apartment.source_url == item["source_url"]).first()
-        if existente:
-            for campo, valor in item.items():
-                setattr(existente, campo, valor)
-            atualizados += 1
-        else:
-            apt = Apartment(**item)
-            # Geocodifica e calcula distância até o trabalho no momento da inserção
-            if apt.address:
-                coords = geocode_address(apt.address)
-                if coords:
-                    apt.latitude, apt.longitude = coords
-                    apt.distance_work_km = distance_to_work_km(*coords)
-                    apt.time_work_minutes = get_driving_time_minutes(*coords)  # None até API paga ser configurada
-            db.add(apt)
-            novos += 1
+        # Campos obrigatórios no banco — pula o anúncio se algum não foi capturado
+        # pelo parser (evita erro de constraint e derrubar a coleta inteira)
+        if not item.get("price") or not item.get("area_total") or not item.get("rooms"):
+            ignorados += 1
+            continue
 
-    db.commit()
-    return {"coletados": len(dados), "novos": novos, "atualizados": atualizados}
+        try:
+            existente = db.query(Apartment).filter(Apartment.source_url == item["source_url"]).first()
+            if existente:
+                for campo, valor in item.items():
+                    setattr(existente, campo, valor)
+                atualizados += 1
+            else:
+                apt = Apartment(**item)
+                if apt.address:
+                    coords = geocode_address(apt.address)
+                    if coords:
+                        apt.latitude, apt.longitude = coords
+                        apt.distance_work_km = distance_to_work_km(*coords)
+                        apt.time_work_minutes = get_driving_time_minutes(*coords)
+                db.add(apt)
+                db.commit()
+                novos += 1
+        except Exception as e:
+            db.rollback()
+            erros.append(str(e)[:200])
+            ignorados += 1
+
+    return {
+        "coletados": len(dados),
+        "novos": novos,
+        "atualizados": atualizados,
+        "ignorados": ignorados,
+        "erros_amostra": erros[:5],
+    }
 
 
 @app.get("/scrape/debug")
