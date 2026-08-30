@@ -11,7 +11,7 @@ import json
 
 from database import get_db, init_db
 from models import Apartment
-from scraper import scrape_search
+from scraper import scrape_search, build_search_url, debug_fetch
 from distance import geocode_address, distance_to_work_km, get_driving_time_minutes
 
 app = FastAPI(title="AptoFinder Salvador API")
@@ -136,6 +136,20 @@ def run_scrape(
 
     db.commit()
     return {"coletados": len(dados), "novos": novos, "atualizados": atualizados}
+
+
+@app.get("/scrape/debug")
+def scrape_debug(
+    cidade_slug: str = "salvador-ba",
+    filtros_slug: str = "3-quartos",
+):
+    """
+    Endpoint temporário de diagnóstico — mostra o que a página real está
+    retornando, para ajustar os seletores do scraper com precisão.
+    Remova este endpoint depois que o scraper estiver funcionando de forma estável.
+    """
+    url = build_search_url(cidade_slug, filtros_slug)
+    return {"url_testada": url, "diagnostico": debug_fetch(url)}
 
 
 @app.get("/health")
