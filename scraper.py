@@ -558,7 +558,7 @@ def scrape_zap(bairros: list[str], city: str = "Salvador", rooms: int = 3) -> li
             continue
 
         soup = BeautifulSoup(html, "html.parser")
-        cards = find_cards_by_link_pattern(soup, href_regex=r"/imovel/.*/id-\d+")
+        cards = find_cards_by_link_pattern(soup, href_regex=r"/imovel/.*-id-\d+")
 
         bairro_nome = bairro_slug.replace("-", " ").title()
         count_bairro = 0
