@@ -143,22 +143,29 @@ def fetch_via_zenrows(url: str, js_render: bool = True, retornar_detalhes: bool 
         query_string = (
             f"apikey={ZENROWS_API_KEY}&url={url_codificada}"
             f"&js_render={'true' if js_render else 'false'}"
-            f"&premium_proxy=true&proxy_country=br&wait=3000"
+            f"&premium_proxy=true&proxy_country=br&wait=6000"
         )
         request_url = f"{ZENROWS_ENDPOINT}?{query_string}"
         logger.info(f"URL exata enviada ao ZenRows: {request_url}")
-        resp = requests.get(request_url, timeout=90)
-        if resp.status_code == 200:
-            return {"html": resp.text, "status_code": 200, "url_enviada_zenrows": request_url} if retornar_detalhes else resp.text
-        logger.warning(f"ZenRows retornou status {resp.status_code} para {url}: {resp.text[:300]}")
-        if retornar_detalhes:
-            return {
+
+        ultimo_erro = None
+        for tentativa in range(1, 3):  # até 2 tentativas — RESP001 costuma ser falha pontual
+            resp = requests.get(request_url, timeout=120)
+            if resp.status_code == 200:
+                return {"html": resp.text, "status_code": 200, "url_enviada_zenrows": request_url} if retornar_detalhes else resp.text
+            logger.warning(f"ZenRows retornou status {resp.status_code} (tentativa {tentativa}) para {url}: {resp.text[:300]}")
+            ultimo_erro = {
                 "erro": f"ZenRows retornou status {resp.status_code}",
                 "corpo_resposta": resp.text[:500],
                 "status_code": resp.status_code,
                 "url_enviada_zenrows": request_url,
+                "tentativas": tentativa,
             }
-        return None
+            if resp.status_code == 404:
+                break  # 404 é erro estrutural (URL errada) — não adianta tentar de novo
+            time.sleep(3)
+
+        return ultimo_erro if retornar_detalhes else None
     except requests.exceptions.Timeout:
         if retornar_detalhes:
             return {"erro": "timeout ao chamar o ZenRows (mais de 90s)"}
