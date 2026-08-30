@@ -214,40 +214,40 @@ def scrape_search(cidade_slug: str, filtros_slug: str, neighborhood: str, city: 
 def debug_fetch(url: str) -> dict:
     """
     Função de diagnóstico — não faz parte do fluxo normal de scraping.
-    Busca a página e reporta o que foi encontrado, para ajudar a identificar
-    por que os seletores podem não estar batendo com o HTML real.
+    Faz sua própria requisição (sem usar fetch_page) para capturar o status
+    HTTP e qualquer erro exato, já que fetch_page normalmente engole esses
+    detalhes ao tentar novamente.
     """
-    html = fetch_page(url)
-    if not html:
-        return {"erro": "fetch_page retornou None — provável bloqueio ou timeout"}
+    resultado = {"url_testada": url}
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
+        resultado["status_code"] = resp.status_code
+        resultado["url_final_apos_redirect"] = resp.url
+        resultado["tamanho_resposta"] = len(resp.text)
+        resultado["primeiros_500_caracteres"] = resp.text[:500]
+        resultado["headers_resposta"] = dict(resp.headers)
 
-    soup = BeautifulSoup(html, "html.parser")
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            candidatos_card = {
+                "[data-qa='POSTING_CARD']": len(soup.select("[data-qa='POSTING_CARD']")),
+                ".posting-card": len(soup.select(".posting-card")),
+                "article": len(soup.select("article")),
+                "[class*='card']": len(soup.select("[class*='card']")),
+                "a[href*='/propriedades/']": len(soup.select("a[href*='/propriedades/']")),
+            }
+            resultado["candidatos_de_card_encontrados"] = candidatos_card
 
-    candidatos_card = {
-        "[data-qa='POSTING_CARD']": len(soup.select("[data-qa='POSTING_CARD']")),
-        ".posting-card": len(soup.select(".posting-card")),
-        "article": len(soup.select("article")),
-        "[class*='card']": len(soup.select("[class*='card']")),
-        "[class*='Card']": len(soup.select("[class*='Card']")),
-        "a[href*='/propriedades/']": len(soup.select("a[href*='/propriedades/']")),
-        "a[href*='/imovel/']": len(soup.select("a[href*='/imovel/']")),
-    }
+    except requests.exceptions.Timeout:
+        resultado["erro"] = "timeout — o servidor do ImovelWeb não respondeu a tempo"
+    except requests.exceptions.ConnectionError as e:
+        resultado["erro"] = f"erro de conexão — provável bloqueio de rede/firewall: {str(e)[:300]}"
+    except requests.exceptions.RequestException as e:
+        resultado["erro"] = f"erro de requisição: {str(e)[:300]}"
+    except Exception as e:
+        resultado["erro"] = f"erro inesperado: {str(e)[:300]}"
 
-    # Pega uma amostra de classes reais usadas na página, para comparação manual
-    all_classes = set()
-    for tag in soup.find_all(class_=True):
-        all_classes.update(tag.get("class", []))
-    classes_relevantes = sorted([c for c in all_classes if any(
-        termo in c.lower() for termo in ["card", "posting", "listing", "aviso", "property"]
-    )])[:30]
-
-    return {
-        "status_recebido": "200 (fetch_page só retorna conteúdo em caso de 200)",
-        "tamanho_html": len(html),
-        "candidatos_de_card_encontrados": candidatos_card,
-        "classes_css_relevantes_na_pagina": classes_relevantes,
-        "primeiros_500_caracteres": html[:500],
-    }
+    return resultado
 
 
 if __name__ == "__main__":
