@@ -272,14 +272,21 @@
     if (e.target !== workAddressInput) suggestionsBox.style.display = "none";
   });
 
+  // Bounding box de Salvador/BA (west,north,east,south) — usada para restringir as
+  // sugestões de endereço à cidade. Sem isso, o Nominatim rankeia por "importância"
+  // global e pode devolver ruas de mesmo nome em outras cidades (ex: outra "Avenida
+  // Tancredo Neves" em Foz do Iguaçu-PR) na frente das de Salvador.
+  const SALVADOR_VIEWBOX = "-38.6994346,-12.7335624,-38.3034141,-13.0173949";
+
   async function buscarSugestoesEndereco(query) {
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=br&addressdetails=1`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=br&addressdetails=1&accept-language=pt-BR&viewbox=${SALVADOR_VIEWBOX}&bounded=1`;
       const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Nominatim respondeu ${resp.status}`);
       const resultados = await resp.json();
 
       if (!resultados.length) {
-        suggestionsBox.innerHTML = `<div style="padding:10px 12px; font-size:13px; color:var(--text-muted);">Nenhum endereço encontrado</div>`;
+        suggestionsBox.innerHTML = `<div style="padding:10px 12px; font-size:13px; color:var(--text-muted);">Nenhum endereço encontrado em Salvador. Tente simplificar (ex: só o nome da rua).</div>`;
         suggestionsBox.style.display = "block";
         return;
       }
@@ -301,7 +308,8 @@
         el.addEventListener("mouseleave", () => el.style.background = "transparent");
       });
     } catch (e) {
-      suggestionsBox.style.display = "none";
+      suggestionsBox.innerHTML = `<div style="padding:10px 12px; font-size:13px; color:var(--text-muted);">Não foi possível buscar endereços agora. Tente novamente em instantes.</div>`;
+      suggestionsBox.style.display = "block";
     }
   }
 
