@@ -13,6 +13,7 @@ escala, seguindo o mesmo espírito de "testar e validar" do resto do projeto.
 import re
 import json
 import time
+import os
 import logging
 from typing import Optional
 import requests
@@ -26,6 +27,16 @@ HEADERS = {
                   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept-Language": "pt-BR,pt;q=0.9",
 }
+
+# ImovelWeb, OLX e Zap Imóveis usam proteção Cloudflare que bloqueia servidores
+# de nuvem (Render, Railway, etc.) — confirmado via diagnóstico em produção.
+# Uma requisição simples (requests.get) não passa. A solução é rotear através
+# de uma API de scraping gerenciada, que resolve o desafio do Cloudflare.
+# ZenRows tem plano gratuito de 5.000 créditos/mês, sem cartão — configure a
+# chave na variável de ambiente ZENROWS_API_KEY (no painel do Render/Railway,
+# em "Environment").
+ZENROWS_API_KEY = os.environ.get("ZENROWS_API_KEY")
+ZENROWS_ENDPOINT = "https://api.zenrows.com/v1/"
 
 BASE_URL = "https://www.imovelweb.com.br"
 
@@ -58,18 +69,50 @@ def build_search_url(cidade_slug: str, filtros_slug: str, pagina: int = 1) -> st
 
 
 def fetch_page(url: str, retries: int = 3, delay_seconds: float = 2.0) -> Optional[str]:
-    """Busca uma página com retentativas e um atraso educado entre requisições."""
+    """
+    Busca uma página. Tenta requisição direta primeiro; se vier bloqueio do
+    Cloudflare (403 com página de desafio) e houver uma chave do ZenRows
+    configurada, refaz a busca através da API de bypass.
+    """
     for attempt in range(1, retries + 1):
         try:
             resp = requests.get(url, headers=HEADERS, timeout=15)
             if resp.status_code == 200:
                 return resp.text
+            if resp.status_code in (403, 429) and ZENROWS_API_KEY:
+                logger.info(f"Bloqueio detectado (status {resp.status_code}) — tentando via ZenRows: {url}")
+                return fetch_via_zenrows(url)
             logger.warning(f"Status {resp.status_code} em {url} (tentativa {attempt})")
         except requests.RequestException as e:
             logger.warning(f"Erro de rede em {url}: {e} (tentativa {attempt})")
         time.sleep(delay_seconds * attempt)  # backoff progressivo
     logger.error(f"Falhou após {retries} tentativas: {url}")
     return None
+
+
+def fetch_via_zenrows(url: str, js_render: bool = True) -> Optional[str]:
+    """
+    Busca uma página através da API do ZenRows, que lida com o desafio do
+    Cloudflare (proxy residencial + execução de JavaScript real).
+    Requer a variável de ambiente ZENROWS_API_KEY configurada.
+    """
+    if not ZENROWS_API_KEY:
+        logger.error("ZENROWS_API_KEY não configurada — não é possível contornar o bloqueio.")
+        return None
+    try:
+        params = {
+            "apikey": ZENROWS_API_KEY,
+            "url": url,
+            "js_render": "true" if js_render else "false",
+        }
+        resp = requests.get(ZENROWS_ENDPOINT, params=params, timeout=60)
+        if resp.status_code == 200:
+            return resp.text
+        logger.warning(f"ZenRows retornou status {resp.status_code} para {url}")
+        return None
+    except requests.RequestException as e:
+        logger.warning(f"Erro ao usar ZenRows para {url}: {e}")
+        return None
 
 
 def extract_parking_type(description: str) -> tuple[Optional[str], Optional[str]]:
@@ -246,6 +289,21 @@ def debug_fetch(url: str) -> dict:
         resultado["erro"] = f"erro de requisição: {str(e)[:300]}"
     except Exception as e:
         resultado["erro"] = f"erro inesperado: {str(e)[:300]}"
+
+    # Se veio bloqueio e há chave do ZenRows configurada, testa o caminho alternativo
+    if resultado.get("status_code") in (403, 429):
+        resultado["zenrows_configurado"] = bool(ZENROWS_API_KEY)
+        if ZENROWS_API_KEY:
+            html_zenrows = fetch_via_zenrows(url)
+            resultado["zenrows_funcionou"] = html_zenrows is not None
+            if html_zenrows:
+                resultado["zenrows_tamanho_resposta"] = len(html_zenrows)
+                soup = BeautifulSoup(html_zenrows, "html.parser")
+                resultado["zenrows_candidatos_de_card"] = {
+                    "[data-qa='POSTING_CARD']": len(soup.select("[data-qa='POSTING_CARD']")),
+                    "article": len(soup.select("article")),
+                    "a[href*='/propriedades/']": len(soup.select("a[href*='/propriedades/']")),
+                }
 
     return resultado
 
