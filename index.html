@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AptoFinder Salvador</title>
+<style>
+  :root {
+    --bg: #FAFAF8;
+    --surface: #FFFFFF;
+    --border: #E5E4DF;
+    --text-primary: #1A1A18;
+    --text-secondary: #6B6A64;
+    --text-muted: #9B9A93;
+    --accent: #185FA5;
+    --accent-bg: #E6F1FB;
+    --success: #3B6D11;
+    --success-bg: #EAF3DE;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  header h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 720px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .filters {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    height: fit-content;
+    position: sticky;
+    top: 24px;
+  }
+  .filters h2 { font-size: 14px; font-weight: 600; margin: 0 0 16px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+  .field input, .field select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 14px;
+    background: var(--surface);
+    color: var(--text-primary);
+  }
+  .field-range { display: flex; align-items: center; gap: 8px; }
+  .field-range input[type=range] { flex: 1; }
+  .field-range output { font-size: 13px; font-weight: 600; min-width: 60px; text-align: right; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .checkbox-row input { width: auto; }
+  .checkbox-row label { font-size: 13px; color: var(--text-primary); margin: 0; }
+  button.search-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--text-primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .results-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  .results-header span { font-size: 14px; color: var(--text-secondary); }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+  }
+  .card.below-market { border: 2px solid var(--accent); }
+  .badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: var(--success-bg);
+    color: var(--success);
+    margin-bottom: 8px;
+  }
+  .card .price { font-size: 22px; font-weight: 700; margin: 4px 0 2px; }
+  .card .meta { font-size: 13px; color: var(--text-secondary); margin: 0 0 12px; }
+  .card .meta .missing { color: var(--text-muted); font-style: italic; }
+  .card .extra {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    font-size: 12px; color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+  }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AptoFinder Salvador</h1>
+</header>
+
+<main>
+  <aside class="filters">
+    <h2>Filtros</h2>
+
+    <div class="field">
+      <label for="city">Cidade</label>
+      <input type="text" id="city" value="Salvador" placeholder="Ex: Salvador">
+    </div>
+
+    <div class="field">
+      <label for="rooms">Quartos</label>
+      <input type="number" id="rooms" value="3" min="0" placeholder="Qualquer">
+    </div>
+
+    <div class="field">
+      <label for="minArea">Área mínima (m²)</label>
+      <input type="number" id="minArea" value="70">
+    </div>
+
+    <div class="field">
+      <label for="minPrice">Valor mínimo (R$)</label>
+      <input type="number" id="minPrice" placeholder="Sem mínimo">
+    </div>
+
+    <div class="field">
+      <label for="maxPrice">Valor máximo (R$)</label>
+      <input type="number" id="maxPrice" value="630000">
+    </div>
+
+    <div class="field">
+      <label for="minParking">Vagas mínimas</label>
+      <input type="number" id="minParking" value="2" min="0">
+    </div>
+
+    <div class="field" style="position:relative;">
+      <label for="workAddress">Endereço de referência (trabalho)</label>
+      <input type="text" id="workAddress" placeholder="Ex: Av. Tancredo Neves, 1000, Salvador" autocomplete="off">
+      <div id="workAddressSuggestions" style="position:absolute; top:100%; left:0; right:0; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); z-index:10; display:none; max-height:220px; overflow-y:auto;"></div>
+    </div>
+
+    <div class="field">
+      <label for="maxDistanceWork">Distância até o trabalho (máx.)</label>
+      <div class="field-range">
+        <input type="range" id="maxDistanceWork" min="1" max="50" value="50" step="1">
+        <output id="maxDistanceWorkOut">50 km</output>
+      </div>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="belowMarketOnly">
+      <label for="belowMarketOnly">Só oportunidades abaixo do mercado</label>
+    </div>
+
+    <button class="search-btn" onclick="buscar()">Buscar</button>
+  </aside>
+
+  <section>
+    <div class="results-header">
+      <span id="resultCount">Carregando...</span>
+      <span id="resultSources" style="font-size: 12px; color: var(--text-muted);"></span>
+    </div>
+    <div id="results"></div>
+  </section>
+</main>
+
+<script>
+  const API_BASE = window.APTOFINDER_API_BASE || "https://findap.onrender.com";
+
+  document.getElementById("maxDistanceWork").addEventListener("input", (e) => {
+    document.getElementById("maxDistanceWorkOut").textContent = e.target.value + " km";
+  });
+
+  function formatPrice(v) {
+    return v ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }) : "—";
+  }
+
+  function formatDistanceM(m) {
+    if (m === null || m === undefined) return null;
+    return m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`;
+  }
+
+  function renderCard(apt) {
+    const belowMarket = apt.below_market_pct !== null && apt.below_market_pct < 0;
+    const badge = belowMarket
+      ? `<span class="badge">${Math.abs(Math.round(apt.below_market_pct))}% abaixo do mercado</span>`
+      : "";
+    const parkingLabel = apt.parking_type === "Não informado"
+      ? `<span class="missing">tipo de vaga não informado</span>`
+      : apt.parking_type;
+    const distanceWork = apt.distance_work_km !== null
+      ? `<span>🚗 Trabalho: ${apt.distance_work_km} km</span>`
+      : "";
+
+    const market = formatDistanceM(apt.distance_market_m);
+    const pharmacy = formatDistanceM(apt.distance_pharmacy_m);
+    const gym = formatDistanceM(apt.distance_gym_m);
+    const transit = formatDistanceM(apt.distance_transit_m);
+
+    const proximidade = [
+      market ? `<span>🛒 Mercado: ${market}</span>` : "",
+      pharmacy ? `<span>💊 Farmácia: ${pharmacy}</span>` : "",
+      gym ? `<span>🏋️ Academia: ${gym}</span>` : "",
+      transit ? `<span>🚌 Transporte: ${transit}</span>` : "",
+    ].filter(Boolean).join("");
+
+    const sourceLabel = { imovelweb: "ImovelWeb", olx: "OLX", zap: "Zap Imóveis" }[apt.source] || apt.source;
+
+    const pricePerM2 = apt.price_per_m2 !== null
+      ? `<span>R$/m² deste imóvel: ${apt.price_per_m2.toLocaleString("pt-BR")}</span>`
+      : "";
+    const avgPricePerM2 = apt.neighborhood_avg_price_per_m2 !== null
+      ? `<span>R$/m² médio da região: ${apt.neighborhood_avg_price_per_m2.toLocaleString("pt-BR")}</span>`
+      : `<span class="missing">média da região indisponível (poucos anúncios)</span>`;
+
+    return `
+      <div class="card ${belowMarket ? "below-market" : ""}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          ${badge || "<span></span>"}
+          <span style="font-size:11px; background:var(--accent-bg); color:var(--accent); padding:2px 8px; border-radius:20px; font-weight:600;">${sourceLabel}</span>
+        </div>
+        <p class="price">${formatPrice(apt.price)}</p>
+        <p class="meta">${apt.neighborhood}${apt.city ? " · " + apt.city : ""} · ${apt.area_total ?? "—"}m² · ${apt.rooms} quartos · ${apt.parking_spaces ?? "—"} vaga(s) ${parkingLabel}</p>
+        <p class="meta" style="font-size:12px;">${pricePerM2} ${pricePerM2 && avgPricePerM2 ? "·" : ""} ${avgPricePerM2}</p>
+        <div class="extra">
+          ${distanceWork}
+          ${proximidade || `<span class="missing">proximidade não calculada</span>`}
+          <a href="${apt.source_url}" target="_blank" rel="noopener">Ver anúncio original</a>
+        </div>
+      </div>
+    `;
+  }
+
+  // Autocomplete de endereço (estilo Google Maps), usando OpenStreetMap/Nominatim — gratuito, sem chave.
+  let debounceTimer = null;
+  const workAddressInput = document.getElementById("workAddress");
+  const suggestionsBox = document.getElementById("workAddressSuggestions");
+
+  workAddressInput.addEventListener("input", () => {
+    clearTimeout(debounceTimer);
+    const query = workAddressInput.value.trim();
+    if (query.length < 4) {
+      suggestionsBox.style.display = "none";
+      return;
+    }
+    debounceTimer = setTimeout(() => buscarSugestoesEndereco(query), 500);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (e.target !== workAddressInput) suggestionsBox.style.display = "none";
+  });
+
+  async function buscarSugestoesEndereco(query) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=br&addressdetails=1`;
+      const resp = await fetch(url);
+      const resultados = await resp.json();
+
+      if (!resultados.length) {
+        suggestionsBox.innerHTML = `<div style="padding:10px 12px; font-size:13px; color:var(--text-muted);">Nenhum endereço encontrado</div>`;
+        suggestionsBox.style.display = "block";
+        return;
+      }
+
+      suggestionsBox.innerHTML = resultados.map(r => `
+        <div class="suggestion-item" data-address="${r.display_name.replace(/"/g, '&quot;')}"
+             style="padding:10px 12px; font-size:13px; cursor:pointer; border-bottom:1px solid var(--border);">
+          ${r.display_name}
+        </div>
+      `).join("");
+      suggestionsBox.style.display = "block";
+
+      suggestionsBox.querySelectorAll(".suggestion-item").forEach(el => {
+        el.addEventListener("click", () => {
+          workAddressInput.value = el.getAttribute("data-address");
+          suggestionsBox.style.display = "none";
+        });
+        el.addEventListener("mouseenter", () => el.style.background = "var(--bg)");
+        el.addEventListener("mouseleave", () => el.style.background = "transparent");
+      });
+    } catch (e) {
+      suggestionsBox.style.display = "none";
+    }
+  }
+
+  async function buscar() {
+    const params = new URLSearchParams();
+    const city = document.getElementById("city").value;
+    const rooms = document.getElementById("rooms").value;
+    const minArea = document.getElementById("minArea").value;
+    const minPrice = document.getElementById("minPrice").value;
+    const maxPrice = document.getElementById("maxPrice").value;
+    const minParking = document.getElementById("minParking").value;
+    const workAddress = document.getElementById("workAddress").value;
+    const maxDistanceWork = document.getElementById("maxDistanceWork").value;
+    const belowMarketOnly = document.getElementById("belowMarketOnly").checked;
+
+    if (city) params.set("city", city);
+    if (rooms) params.set("rooms", rooms);
+    if (minArea) params.set("min_area", minArea);
+    if (minPrice) params.set("min_price", minPrice);
+    if (maxPrice) params.set("max_price", maxPrice);
+    if (minParking) params.set("min_parking", minParking);
+    if (workAddress) params.set("work_address", workAddress);
+    if (maxDistanceWork) params.set("max_distance_work_km", maxDistanceWork);
+    if (belowMarketOnly) params.set("below_market_only", "true");
+
+    const resultsEl = document.getElementById("results");
+    const countEl = document.getElementById("resultCount");
+    countEl.textContent = "Buscando...";
+    resultsEl.innerHTML = "";
+
+    try {
+      const resp = await fetch(`${API_BASE}/apartments?${params.toString()}`);
+      const data = await resp.json();
+
+      if (data.aviso) {
+        countEl.textContent = "Aviso";
+        resultsEl.innerHTML = `<div class="empty-state">${data.aviso}</div>`;
+        return;
+      }
+
+      countEl.textContent = `${data.count} resultado(s) encontrado(s)`;
+      if (data.count === 0) {
+        resultsEl.innerHTML = `<div class="empty-state">Nenhum imóvel encontrado com esses filtros. Tente ampliar o orçamento ou a distância.</div>`;
+        return;
+      }
+      resultsEl.innerHTML = data.results.map(renderCard).join("");
+    } catch (e) {
+      countEl.textContent = "Erro ao buscar";
+      resultsEl.innerHTML = `<div class="empty-state">Não foi possível conectar à API (${API_BASE}). Confira se o backend está rodando.</div>`;
+    }
+  }
+
+  buscar();
+</script>
+
+</body>
+</html>
