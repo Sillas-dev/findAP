@@ -18,10 +18,10 @@ from typing import Optional
 
 logger = logging.getLogger("distance")
 
-# Endereço de referência do trabalho (definido no projeto)
-WORK_ADDRESS = "Banco do Nordeste, Centro Industrial de Aratu, Simões Filho, BA"
-WORK_LAT = -12.8267507
-WORK_LNG = -38.4009075
+# Endereço padrão (usado se o usuário não informar outro na busca)
+WORK_ADDRESS_DEFAULT = "Banco do Nordeste, Centro Industrial de Aratu, Simões Filho, BA"
+WORK_LAT_DEFAULT = -12.8267507
+WORK_LNG_DEFAULT = -38.4009075
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 # Nominatim (OpenStreetMap) é gratuito mas pede rate limit de 1 req/segundo e um User-Agent identificável.
@@ -63,9 +63,9 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def distance_to_work_km(lat: float, lng: float) -> float:
-    """Distância em linha reta do apartamento até o trabalho (Banco do Nordeste, Simões Filho)."""
-    return round(haversine_km(lat, lng, WORK_LAT, WORK_LNG), 1)
+def distance_to_work_km(lat: float, lng: float, work_lat: float = WORK_LAT_DEFAULT, work_lng: float = WORK_LNG_DEFAULT) -> float:
+    """Distância em linha reta do apartamento até o endereço de trabalho informado (ou o padrão do projeto)."""
+    return round(haversine_km(lat, lng, work_lat, work_lng), 1)
 
 
 def get_driving_time_minutes(lat: float, lng: float) -> Optional[float]:
