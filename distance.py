@@ -24,8 +24,13 @@ WORK_LAT_DEFAULT = -12.8267507
 WORK_LNG_DEFAULT = -38.4009075
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-# Nominatim (OpenStreetMap) é gratuito mas pede rate limit de 1 req/segundo e um User-Agent identificável.
-NOMINATIM_HEADERS = {"User-Agent": "AptoFinderSalvador/1.0 (uso pessoal)"}
+# Nominatim (OpenStreetMap) é gratuito mas pede rate limit de 1 req/segundo e um
+# User-Agent identificável (política de uso justo). Uso muito intenso (ex. muitas
+# rodadas de scraping em sequência) pode levar a um bloqueio temporário do IP —
+# se os endereços pararem de ser encontrados em massa (não só um caso isolado),
+# é provável que seja isso, não um bug de código. Nesse caso, esperar algumas
+# horas antes de tentar de novo costuma resolver.
+NOMINATIM_HEADERS = {"User-Agent": "AptoFinderSalvador/1.0 (projeto pessoal de busca de apartamentos)"}
 
 
 def geocode_address(address: str, city: str = "Salvador, BA, Brasil") -> Optional[tuple[float, float]]:
@@ -33,8 +38,13 @@ def geocode_address(address: str, city: str = "Salvador, BA, Brasil") -> Optiona
     Converte um endereço em (latitude, longitude) usando Nominatim (OpenStreetMap), gratuito.
     Retorna None se não encontrar — nesse caso, o imóvel fica sem distância calculada
     (mesma filosofia de transparência: não inventar dado que não existe).
+
+    Se o endereço já parece completo (ex: veio do autocomplete do frontend, que já
+    devolve o endereço formatado inteiro, terminando em "Brasil"), não agrega a
+    cidade de novo — fazer isso duplicava trechos e confundia a busca do Nominatim.
     """
-    query = f"{address}, {city}"
+    parece_completo = address.strip().lower().endswith("brasil") or address.strip().lower().endswith("brazil")
+    query = address if parece_completo else f"{address}, {city}"
     try:
         resp = requests.get(
             NOMINATIM_URL,
@@ -44,6 +54,17 @@ def geocode_address(address: str, city: str = "Salvador, BA, Brasil") -> Optiona
         )
         time.sleep(1)  # respeita o rate limit de 1 req/s do Nominatim
         results = resp.json()
+        if not results and not parece_completo:
+            # Fallback: tenta sem agregar cidade, caso o endereço já contivesse info suficiente
+            logger.info(f"Sem resultado para '{query}' — tentando só o endereço original")
+            resp = requests.get(
+                NOMINATIM_URL,
+                params={"q": address, "format": "json", "limit": 1},
+                headers=NOMINATIM_HEADERS,
+                timeout=10,
+            )
+            time.sleep(1)
+            results = resp.json()
         if not results:
             logger.info(f"Endereço não geocodificado: {query}")
             return None
