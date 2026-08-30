@@ -140,16 +140,18 @@ def run_scrape(
 
 @app.get("/scrape/debug")
 def scrape_debug(
+    url: Optional[str] = None,
     cidade_slug: str = "salvador-ba",
     filtros_slug: str = "3-quartos",
 ):
     """
-    Endpoint temporário de diagnóstico — mostra o que a página real está
-    retornando, para ajustar os seletores do scraper com precisão.
+    Endpoint temporário de diagnóstico — mostra o que uma página real está
+    retornando a partir do servidor, para identificar bloqueios de anti-bot.
+    Passe ?url=... para testar qualquer site diretamente (ex. OLX, Zap).
     Remova este endpoint depois que o scraper estiver funcionando de forma estável.
     """
-    url = build_search_url(cidade_slug, filtros_slug)
-    return {"url_testada": url, "diagnostico": debug_fetch(url)}
+    url_testada = url or build_search_url(cidade_slug, filtros_slug)
+    return debug_fetch(url_testada)
 
 
 @app.get("/health")
