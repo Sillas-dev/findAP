@@ -209,11 +209,35 @@ def parse_price(text: str) -> Optional[float]:
 
 
 def parse_area(text: str) -> Optional[float]:
-    """Converte '124 m² tot.' -> 124.0"""
+    """
+    Converte '124 m² tot.' -> 124.0.
+    Exige o símbolo de área (m²/m2) em vez de só "m" — a versão anterior
+    (`\\d+\\s*m`) também casava com números seguidos de "mil", "metros",
+    "manhã" etc. em qualquer lugar do texto do card, gerando áreas absurdas
+    (ex: 100.000 m²) que distorciam a média de R$/m² do bairro (Fase 4).
+    Descarta também valores fora de uma faixa plausível de apartamento.
+    """
     if not text:
         return None
-    match = re.search(r"(\d+)\s*m", text)
-    return float(match.group(1)) if match else None
+    match = re.search(r"(\d{1,4})\s*m[²2]\b", text)
+    if not match:
+        return None
+    valor = float(match.group(1))
+    if valor < 10 or valor > 2000:
+        return None
+    return valor
+
+
+def normalize_source_url(url: str) -> str:
+    """
+    Remove parâmetros de rastreamento da URL (ex: n_search_id do ImovelWeb),
+    que mudam a cada busca mesmo para o mesmo anúncio. Sem isso, a checagem
+    de "já existe no banco" (por source_url) nunca bate, e o mesmo imóvel é
+    salvo como novo a cada scrape, duplicando os resultados.
+    """
+    if not url:
+        return url
+    return url.split("?", 1)[0]
 
 
 def parse_int_field(text: str) -> Optional[int]:
@@ -241,6 +265,7 @@ def parse_listing_card(card, source_url_base: str = BASE_URL) -> Optional[dict]:
         source_url = link_el.get("href", "")
         if source_url.startswith("/"):
             source_url = source_url_base + source_url
+        source_url = normalize_source_url(source_url)
 
         card_text = card.get_text(" ", strip=True)
 
@@ -463,6 +488,7 @@ def parse_generic_card(link, container, source: str, base_url: str) -> Optional[
         source_url = link.get("href", "")
         if source_url.startswith("/"):
             source_url = base_url + source_url
+        source_url = normalize_source_url(source_url)
 
         card_text = container.get_text(" ", strip=True)
 
