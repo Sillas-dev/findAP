@@ -55,6 +55,34 @@ AMENITY_KEYWORDS = [
     "sauna", "espaço gourmet", "cinema", "coworking", "pet place", "bicicletário",
 ]
 
+# Bairros de Salvador identificados durante a validação do protótipo (Fases 1 e 4).
+# Usado para extrair o bairro real de cada anúncio a partir do texto do card —
+# sem isso, a comparação de valor de mercado (Fase 4) fica sem sentido, porque
+# agruparia imóveis de bairros muito diferentes numa única "média geral".
+# Lista não exaustiva — bairros fora dela caem no valor padrão informado na busca.
+BAIRROS_SALVADOR = [
+    "Caminho das Árvores", "Horto Florestal", "Costa Azul", "Jaguaribe",
+    "Patamares", "Itaigara", "Cabula", "Candeal", "Pituba", "Barra", "Graça",
+    "Armação", "Imbuí", "Piatã", "Stella Maris", "Boca do Rio", "Rio Vermelho",
+    "Ondina", "Federação", "Brotas", "Cajazeiras", "Liberdade", "Pernambués",
+    "Vila Laura", "Nazaré", "Comércio", "Pituaçu", "Paralela", "Imbuí",
+    "São Marcos", "Sussuarana", "Alphaville", "Amaralina", "Canela",
+]
+
+
+def extract_neighborhood(text: str, fallback: str) -> str:
+    """
+    Procura por um nome de bairro conhecido dentro do texto do anúncio.
+    Usa o fallback (bairro genérico passado na busca) se nenhum bater —
+    evita que o campo fique vazio, mas prioriza sempre o valor real extraído.
+    """
+    if not text:
+        return fallback
+    for bairro in BAIRROS_SALVADOR:
+        if bairro.lower() in text.lower():
+            return bairro
+    return fallback
+
 
 def build_search_url(cidade_slug: str, filtros_slug: str, pagina: int = 1) -> str:
     """
@@ -197,6 +225,7 @@ def parse_listing_card(card, source_url_base: str = BASE_URL) -> Optional[dict]:
 
         address_el = card.select_one("[class*='location-address'], [class*='LocationAddress']")
         address = address_el.get_text(strip=True) if address_el else None
+        neighborhood_extraido = extract_neighborhood(f"{address or ''} {card_text}", fallback=None)
 
         description_el = card.select_one("[class*='posting-description'], [class*='PostingDescription']")
         description = description_el.get_text(" ", strip=True) if description_el else card_text
@@ -217,6 +246,7 @@ def parse_listing_card(card, source_url_base: str = BASE_URL) -> Optional[dict]:
             "bathrooms": int(bathrooms_match.group(1)) if bathrooms_match else None,
             "parking_spaces": int(parking_match.group(1)) if parking_match else None,
             "address": address,
+            "neighborhood_extraido": neighborhood_extraido,
             "raw_description": description,
             "parking_type": parking_type,
             "parking_type_source": parking_source,
@@ -251,7 +281,7 @@ def scrape_search(cidade_slug: str, filtros_slug: str, neighborhood: str, city: 
         for card in cards:
             item = parse_listing_card(card)
             if item:
-                item["neighborhood"] = neighborhood
+                item["neighborhood"] = item.pop("neighborhood_extraido", None) or neighborhood
                 item["city"] = city
                 resultados.append(item)
                 pagina_resultados += 1
@@ -408,6 +438,8 @@ def parse_generic_card(link, container, source: str, base_url: str) -> Optional[
         if has_structured_tags and parking_type:
             parking_source = "tags"
 
+        neighborhood_extraido = extract_neighborhood(card_text, fallback=None)
+
         return {
             "source": source,
             "source_url": source_url,
@@ -417,6 +449,7 @@ def parse_generic_card(link, container, source: str, base_url: str) -> Optional[
             "bathrooms": int(bathrooms_match.group(1)) if bathrooms_match else None,
             "parking_spaces": int(parking_match.group(1)) if parking_match else None,
             "address": None,  # OLX/Zap não expõem endereço estruturado no card de listagem
+            "neighborhood_extraido": neighborhood_extraido,
             "raw_description": card_text,
             "parking_type": parking_type,
             "parking_type_source": parking_source,
@@ -452,7 +485,7 @@ def scrape_olx(neighborhood: str = "Salvador (geral)", city: str = "Salvador", r
     for link, container in cards:
         item = parse_generic_card(link, container, source="olx", base_url=OLX_BASE)
         if item and item.get("price"):
-            item["neighborhood"] = neighborhood
+            item["neighborhood"] = item.pop("neighborhood_extraido", None) or neighborhood
             item["city"] = city
             resultados.append(item)
 
