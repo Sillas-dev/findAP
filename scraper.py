@@ -118,17 +118,20 @@ def fetch_page(url: str, retries: int = 3, delay_seconds: float = 2.0) -> Option
     return None
 
 
-def fetch_via_zenrows(url: str, js_render: bool = True) -> Optional[str]:
+def fetch_via_zenrows(url: str, js_render: bool = True, retornar_detalhes: bool = False):
     """
     Busca uma página através da API do ZenRows, que lida com o desafio do
     Cloudflare (proxy residencial + execução de JavaScript real).
     Usa proxy_country=br para evitar respostas diferentes por geolocalização
     (sites brasileiros às vezes servem conteúdo distinto para IPs de fora do país).
     Requer a variável de ambiente ZENROWS_API_KEY configurada.
+
+    Se retornar_detalhes=True, retorna um dict com status/erro em vez de só o HTML
+    (usado pelo diagnóstico, para saber exatamente por que uma tentativa falhou).
     """
     if not ZENROWS_API_KEY:
         logger.error("ZENROWS_API_KEY não configurada — não é possível contornar o bloqueio.")
-        return None
+        return {"erro": "ZENROWS_API_KEY não configurada"} if retornar_detalhes else None
     try:
         params = {
             "apikey": ZENROWS_API_KEY,
@@ -140,11 +143,19 @@ def fetch_via_zenrows(url: str, js_render: bool = True) -> Optional[str]:
         }
         resp = requests.get(ZENROWS_ENDPOINT, params=params, timeout=90)
         if resp.status_code == 200:
-            return resp.text
+            return {"html": resp.text, "status_code": 200} if retornar_detalhes else resp.text
         logger.warning(f"ZenRows retornou status {resp.status_code} para {url}: {resp.text[:300]}")
+        if retornar_detalhes:
+            return {"erro": f"ZenRows retornou status {resp.status_code}", "corpo_resposta": resp.text[:500], "status_code": resp.status_code}
+        return None
+    except requests.exceptions.Timeout:
+        if retornar_detalhes:
+            return {"erro": "timeout ao chamar o ZenRows (mais de 90s)"}
         return None
     except requests.RequestException as e:
         logger.warning(f"Erro ao usar ZenRows para {url}: {e}")
+        if retornar_detalhes:
+            return {"erro": f"erro de requisição ao ZenRows: {str(e)[:300]}"}
         return None
 
 
@@ -332,8 +343,11 @@ def debug_fetch(url: str) -> dict:
     if resultado.get("status_code") in (403, 429):
         resultado["zenrows_configurado"] = bool(ZENROWS_API_KEY)
         if ZENROWS_API_KEY:
-            html_zenrows = fetch_via_zenrows(url)
+            detalhes_zenrows = fetch_via_zenrows(url, retornar_detalhes=True)
+            html_zenrows = detalhes_zenrows.get("html")
             resultado["zenrows_funcionou"] = html_zenrows is not None
+            if not html_zenrows:
+                resultado["zenrows_detalhe_erro"] = detalhes_zenrows
             if html_zenrows:
                 resultado["zenrows_tamanho_resposta"] = len(html_zenrows)
                 soup = BeautifulSoup(html_zenrows, "html.parser")
