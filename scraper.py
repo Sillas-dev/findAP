@@ -169,9 +169,13 @@ def parse_int_field(text: str) -> Optional[int]:
 def parse_listing_card(card, source_url_base: str = BASE_URL) -> Optional[dict]:
     """
     Extrai os campos de um card de anúncio na página de listagem.
-    A estrutura de classes CSS abaixo é baseada no HTML observado durante a
-    validação manual — sites mudam o HTML com frequência, então esta função
-    é o ponto mais provável de precisar de manutenção.
+    Seletores confirmados via diagnóstico em produção (ago/2026):
+    - Container do card: [data-posting-type]
+    - Link do anúncio: a[href*='/propriedades/']
+    O restante dos campos (preço, área, quartos, etc.) é extraído via regex
+    sobre o texto completo do card, em vez de classes CSS específicas — essas
+    classes usam nomes gerados (CSS modules) que tendem a mudar com builds do
+    site, então o texto puro é uma extração mais resiliente.
     """
     try:
         link_el = card.select_one("a[href*='/propriedades/']")
@@ -181,22 +185,21 @@ def parse_listing_card(card, source_url_base: str = BASE_URL) -> Optional[dict]:
         if source_url.startswith("/"):
             source_url = source_url_base + source_url
 
-        price_el = card.select_one("[data-qa='POSTING_CARD_PRICE'], .price-items")
-        price = parse_price(price_el.get_text() if price_el else "")
+        card_text = card.get_text(" ", strip=True)
 
-        features_el = card.select_one("[data-qa='POSTING_CARD_FEATURES'], .card-features")
-        features_text = features_el.get_text(" ", strip=True) if features_el else ""
+        price_match = re.search(r"R\$\s*[\d.]+", card_text)
+        price = parse_price(price_match.group(0)) if price_match else None
 
-        area = parse_area(features_text)
-        rooms_match = re.search(r"(\d+)\s*quarto", features_text)
-        bathrooms_match = re.search(r"(\d+)\s*ban", features_text)
-        parking_match = re.search(r"(\d+)\s*vaga", features_text)
+        area = parse_area(card_text)
+        rooms_match = re.search(r"(\d+)\s*quarto", card_text)
+        bathrooms_match = re.search(r"(\d+)\s*ban", card_text)
+        parking_match = re.search(r"(\d+)\s*vaga", card_text)
 
-        address_el = card.select_one("[data-qa='POSTING_CARD_LOCATION'], .card-address")
+        address_el = card.select_one("[class*='location-address'], [class*='LocationAddress']")
         address = address_el.get_text(strip=True) if address_el else None
 
-        description_el = card.select_one("[data-qa='POSTING_CARD_DESCRIPTION'], .card-description")
-        description = description_el.get_text(" ", strip=True) if description_el else ""
+        description_el = card.select_one("[class*='posting-description'], [class*='PostingDescription']")
+        description = description_el.get_text(" ", strip=True) if description_el else card_text
 
         # Tenta detectar bloco de tags estruturadas (~30% dos anúncios, validado na Fase 3)
         has_structured_tags = bool(re.search(r"(Lazer|Estrutura|Serviços Próximos)\s*:", description))
@@ -239,7 +242,7 @@ def scrape_search(cidade_slug: str, filtros_slug: str, neighborhood: str, city: 
             break
 
         soup = BeautifulSoup(html, "html.parser")
-        cards = soup.select("[data-qa='POSTING_CARD'], .posting-card, article")
+        cards = soup.select("[data-posting-type]")
         if not cards:
             logger.info(f"Nenhum card encontrado na página {pagina} — fim dos resultados.")
             break
