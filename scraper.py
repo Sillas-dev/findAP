@@ -133,26 +133,30 @@ def fetch_via_zenrows(url: str, js_render: bool = True, retornar_detalhes: bool 
         logger.error("ZENROWS_API_KEY não configurada — não é possível contornar o bloqueio.")
         return {"erro": "ZENROWS_API_KEY não configurada"} if retornar_detalhes else None
     try:
-        params = {
-            "apikey": ZENROWS_API_KEY,
-            "url": url,
-            "js_render": "true" if js_render else "false",
-            "premium_proxy": "true",
-            "proxy_country": "br",
-            "wait": "3000",  # espera 3s após carregar, para conteúdo carregado via JS aparecer
-        }
-        req_preparado = requests.Request("GET", ZENROWS_ENDPOINT, params=params).prepare()
-        logger.info(f"URL exata enviada ao ZenRows: {req_preparado.url}")
-        resp = requests.get(ZENROWS_ENDPOINT, params=params, timeout=90)
+        # Monta a URL manualmente em vez de usar params=... — confirmado via
+        # diagnóstico em produção que o '+' na URL (usado de propósito pelo Zap
+        # Imóveis) ficava sem codificar quando a biblioteca montava a query
+        # string sozinha, o que o ZenRows provavelmente decodifica como espaço
+        # em branco, quebrando a URL de destino (gerava 404).
+        from urllib.parse import quote
+        url_codificada = quote(url, safe="")
+        query_string = (
+            f"apikey={ZENROWS_API_KEY}&url={url_codificada}"
+            f"&js_render={'true' if js_render else 'false'}"
+            f"&premium_proxy=true&proxy_country=br&wait=3000"
+        )
+        request_url = f"{ZENROWS_ENDPOINT}?{query_string}"
+        logger.info(f"URL exata enviada ao ZenRows: {request_url}")
+        resp = requests.get(request_url, timeout=90)
         if resp.status_code == 200:
-            return {"html": resp.text, "status_code": 200, "url_enviada_zenrows": req_preparado.url} if retornar_detalhes else resp.text
+            return {"html": resp.text, "status_code": 200, "url_enviada_zenrows": request_url} if retornar_detalhes else resp.text
         logger.warning(f"ZenRows retornou status {resp.status_code} para {url}: {resp.text[:300]}")
         if retornar_detalhes:
             return {
                 "erro": f"ZenRows retornou status {resp.status_code}",
                 "corpo_resposta": resp.text[:500],
                 "status_code": resp.status_code,
-                "url_enviada_zenrows": req_preparado.url,
+                "url_enviada_zenrows": request_url,
             }
         return None
     except requests.exceptions.Timeout:
