@@ -299,11 +299,35 @@ def debug_fetch(url: str) -> dict:
             if html_zenrows:
                 resultado["zenrows_tamanho_resposta"] = len(html_zenrows)
                 soup = BeautifulSoup(html_zenrows, "html.parser")
+
                 resultado["zenrows_candidatos_de_card"] = {
                     "[data-qa='POSTING_CARD']": len(soup.select("[data-qa='POSTING_CARD']")),
                     "article": len(soup.select("article")),
                     "a[href*='/propriedades/']": len(soup.select("a[href*='/propriedades/']")),
+                    "a[href*='/imovel']": len(soup.select("a[href*='/imovel']")),
+                    "li": len(soup.select("li")),
+                    "div[data-posting-type]": len(soup.select("[data-posting-type]")),
                 }
+
+                # Confirma se há anúncios reais na página (evidência independente de seletor)
+                resultado["ocorrencias_de_R$"] = html_zenrows.count("R$")
+
+                # Extrai uma amostra de classes CSS reais, filtrando por termos prováveis
+                all_classes = set()
+                for tag in soup.find_all(class_=True):
+                    all_classes.update(tag.get("class", []))
+                termos = ["card", "posting", "listing", "aviso", "property", "price", "list-item", "sc-"]
+                resultado["classes_css_relevantes"] = sorted(
+                    [c for c in all_classes if any(t in c.lower() for t in termos)]
+                )[:40]
+
+                # Amostra de todos os atributos data-* únicos (esses sites costumam usar data-qa, data-testid, etc.)
+                data_attrs = set()
+                for tag in soup.find_all(True):
+                    for attr in tag.attrs:
+                        if attr.startswith("data-"):
+                            data_attrs.add(attr)
+                resultado["atributos_data_encontrados"] = sorted(data_attrs)[:30]
 
     return resultado
 
