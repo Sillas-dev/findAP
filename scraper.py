@@ -348,6 +348,203 @@ def debug_fetch(url: str) -> dict:
     return resultado
 
 
+def find_cards_by_link_pattern(soup, href_regex: str, min_container_chars: int = 60):
+    """
+    Estratégia genérica para sites onde não temos um seletor de card confirmado
+    (OLX, Zap): encontra os links de anúncio pelo padrão da URL, depois sobe
+    na árvore HTML até achar um container com texto suficiente (que deve
+    incluir preço, área etc.) — evita depender de nomes de classe CSS
+    específicos, que tendem a mudar.
+    """
+    pattern = re.compile(href_regex)
+    vistos = set()
+    resultados = []
+
+    for link in soup.find_all("a", href=True):
+        href = link["href"]
+        if not pattern.search(href):
+            continue
+        if href in vistos:
+            continue
+
+        container = link
+        for _ in range(6):  # sobe até 6 níveis procurando um container "rico" em texto
+            if container.parent is None:
+                break
+            container = container.parent
+            texto = container.get_text(" ", strip=True)
+            if len(texto) >= min_container_chars and "R$" in texto:
+                break
+
+        vistos.add(href)
+        resultados.append((link, container))
+
+    return resultados
+
+
+def parse_generic_card(link, container, source: str, base_url: str) -> Optional[dict]:
+    """
+    Extração genérica por regex sobre o texto do container — usada para OLX e
+    Zap, cujos seletores CSS exatos ainda não foram confirmados em produção
+    (diferente do ImovelWeb, que já passou por esse ajuste fino).
+    """
+    try:
+        source_url = link.get("href", "")
+        if source_url.startswith("/"):
+            source_url = base_url + source_url
+
+        card_text = container.get_text(" ", strip=True)
+
+        price_match = re.search(r"R\$\s*[\d.]+", card_text)
+        price = parse_price(price_match.group(0)) if price_match else None
+
+        area = parse_area(card_text)
+        rooms_match = re.search(r"(\d+)\s*quarto", card_text)
+        bathrooms_match = re.search(r"(\d+)\s*ban", card_text)
+        parking_match = re.search(r"(\d+)\s*vaga", card_text)
+
+        has_structured_tags = bool(re.search(r"(Lazer|Estrutura|Serviços Próximos)\s*:", card_text))
+        parking_type, parking_source = extract_parking_type(card_text)
+        if has_structured_tags and parking_type:
+            parking_source = "tags"
+
+        return {
+            "source": source,
+            "source_url": source_url,
+            "price": price,
+            "area_total": area,
+            "rooms": int(rooms_match.group(1)) if rooms_match else None,
+            "bathrooms": int(bathrooms_match.group(1)) if bathrooms_match else None,
+            "parking_spaces": int(parking_match.group(1)) if parking_match else None,
+            "address": None,  # OLX/Zap não expõem endereço estruturado no card de listagem
+            "raw_description": card_text,
+            "parking_type": parking_type,
+            "parking_type_source": parking_source,
+            "amenities": json.dumps(extract_amenities(card_text), ensure_ascii=False),
+        }
+    except Exception as e:
+        logger.warning(f"Falha ao parsear card genérico ({source}): {e}")
+        return None
+
+
+# --- OLX ---
+# Paginação NÃO resolvida (validado no protótipo — ?o=2 devolve a página 1 de novo).
+# Por enquanto cobre só os primeiros ~50 resultados por busca.
+OLX_BASE = "https://www.olx.com.br"
+
+
+def build_search_url_olx(rooms: int = 3, uf: str = "ba", regiao: str = "grande-salvador", cidade: str = "salvador") -> str:
+    return f"{OLX_BASE}/imoveis/venda/apartamentos/{rooms}-quartos/estado-{uf}/{regiao}/{cidade}"
+
+
+def scrape_olx(neighborhood: str = "Salvador (geral)", city: str = "Salvador", rooms: int = 3) -> list[dict]:
+    url = build_search_url_olx(rooms=rooms)
+    logger.info(f"Buscando OLX: {url}")
+    html = fetch_page(url)
+    if not html:
+        return []
+
+    soup = BeautifulSoup(html, "html.parser")
+    # Links de anúncio no OLX terminam em uma sequência longa de dígitos (o ID do anúncio)
+    cards = find_cards_by_link_pattern(soup, href_regex=r"/imoveis/.*-\d{6,}$")
+
+    resultados = []
+    for link, container in cards:
+        item = parse_generic_card(link, container, source="olx", base_url=OLX_BASE)
+        if item and item.get("price"):
+            item["neighborhood"] = neighborhood
+            item["city"] = city
+            resultados.append(item)
+
+    logger.info(f"OLX: {len(resultados)} anúncios extraídos.")
+    return resultados
+
+
+# --- Zap Imóveis ---
+# Confirmado no protótipo: só funciona buscando por BAIRRO, não pela cidade inteira
+# (busca ampla leva bloqueio 429 mesmo antes do Cloudflare entrar em ação).
+ZAP_BASE = "https://www.zapimoveis.com.br"
+
+
+def build_search_url_zap(bairro_slug: str, cidade_slug: str = "ba+salvador", rooms: int = 3) -> str:
+    return f"{ZAP_BASE}/venda/apartamentos/{cidade_slug}++{bairro_slug}/{rooms}-quartos/"
+
+
+def scrape_zap(bairros: list[str], city: str = "Salvador", rooms: int = 3) -> list[dict]:
+    """
+    bairros: lista de slugs de bairro (ex. ["caminho-das-arvores", "candeal", "itaigara"]).
+    Itera um bairro por vez — é a única forma validada de acessar o Zap sem bloqueio.
+    """
+    resultados = []
+    for bairro_slug in bairros:
+        url = build_search_url_zap(bairro_slug, rooms=rooms)
+        logger.info(f"Buscando Zap Imóveis ({bairro_slug}): {url}")
+        html = fetch_page(url)
+        if not html:
+            continue
+
+        soup = BeautifulSoup(html, "html.parser")
+        cards = find_cards_by_link_pattern(soup, href_regex=r"/imovel/.*/id-\d+")
+
+        bairro_nome = bairro_slug.replace("-", " ").title()
+        count_bairro = 0
+        for link, container in cards:
+            item = parse_generic_card(link, container, source="zap", base_url=ZAP_BASE)
+            if item and item.get("price"):
+                item["neighborhood"] = bairro_nome
+                item["city"] = city
+                resultados.append(item)
+                count_bairro += 1
+
+        logger.info(f"Zap Imóveis ({bairro_slug}): {count_bairro} anúncios extraídos.")
+        time.sleep(2)  # pausa entre bairros
+
+    return resultados
+
+
+def scrape_all_sources(cidade_slug: str, filtros_slug: str, neighborhood: str, city: str = "Salvador",
+                        max_paginas: int = 3, zap_bairros: Optional[list[str]] = None) -> dict:
+    """
+    Roda as 3 fontes e combina os resultados. Cada fonte é isolada em seu
+    próprio try/except — se uma falhar, as outras continuam normalmente.
+    zap_bairros: lista de bairros para o Zap (obrigatório buscar por bairro).
+    Se não informado, usa uma lista padrão dos bairros mais buscados no protótipo.
+    """
+    if zap_bairros is None:
+        zap_bairros = ["caminho-das-arvores", "candeal", "itaigara", "costa-azul", "cabula"]
+
+    todos = []
+    resumo_por_fonte = {}
+
+    try:
+        dados_imovelweb = scrape_search(cidade_slug, filtros_slug, neighborhood, city, max_paginas)
+        todos.extend(dados_imovelweb)
+        resumo_por_fonte["imovelweb"] = len(dados_imovelweb)
+    except Exception as e:
+        logger.error(f"Falha no scraping do ImovelWeb: {e}")
+        resumo_por_fonte["imovelweb"] = f"erro: {str(e)[:200]}"
+
+    try:
+        rooms = int(re.search(r"(\d+)", filtros_slug).group(1)) if re.search(r"(\d+)", filtros_slug) else 3
+        dados_olx = scrape_olx(neighborhood, city, rooms=rooms)
+        todos.extend(dados_olx)
+        resumo_por_fonte["olx"] = len(dados_olx)
+    except Exception as e:
+        logger.error(f"Falha no scraping do OLX: {e}")
+        resumo_por_fonte["olx"] = f"erro: {str(e)[:200]}"
+
+    try:
+        rooms = int(re.search(r"(\d+)", filtros_slug).group(1)) if re.search(r"(\d+)", filtros_slug) else 3
+        dados_zap = scrape_zap(zap_bairros, city, rooms=rooms)
+        todos.extend(dados_zap)
+        resumo_por_fonte["zap"] = len(dados_zap)
+    except Exception as e:
+        logger.error(f"Falha no scraping do Zap Imóveis: {e}")
+        resumo_por_fonte["zap"] = f"erro: {str(e)[:200]}"
+
+    return {"itens": todos, "resumo_por_fonte": resumo_por_fonte}
+
+
 if __name__ == "__main__":
     # Exemplo de uso — rode com poucas páginas primeiro para validar antes de escalar.
     dados = scrape_search(
