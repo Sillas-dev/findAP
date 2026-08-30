@@ -565,6 +565,7 @@ def scrape_zap(bairros: list[str], city: str = "Salvador", rooms: int = 3) -> li
         for link, container in cards:
             item = parse_generic_card(link, container, source="zap", base_url=ZAP_BASE)
             if item and item.get("price"):
+                item.pop("neighborhood_extraido", None)
                 item["neighborhood"] = bairro_nome
                 item["city"] = city
                 resultados.append(item)
