@@ -94,6 +94,8 @@ def fetch_via_zenrows(url: str, js_render: bool = True) -> Optional[str]:
     """
     Busca uma página através da API do ZenRows, que lida com o desafio do
     Cloudflare (proxy residencial + execução de JavaScript real).
+    Usa proxy_country=br para evitar respostas diferentes por geolocalização
+    (sites brasileiros às vezes servem conteúdo distinto para IPs de fora do país).
     Requer a variável de ambiente ZENROWS_API_KEY configurada.
     """
     if not ZENROWS_API_KEY:
@@ -104,11 +106,14 @@ def fetch_via_zenrows(url: str, js_render: bool = True) -> Optional[str]:
             "apikey": ZENROWS_API_KEY,
             "url": url,
             "js_render": "true" if js_render else "false",
+            "premium_proxy": "true",
+            "proxy_country": "br",
+            "wait": "3000",  # espera 3s após carregar, para conteúdo carregado via JS aparecer
         }
-        resp = requests.get(ZENROWS_ENDPOINT, params=params, timeout=60)
+        resp = requests.get(ZENROWS_ENDPOINT, params=params, timeout=90)
         if resp.status_code == 200:
             return resp.text
-        logger.warning(f"ZenRows retornou status {resp.status_code} para {url}")
+        logger.warning(f"ZenRows retornou status {resp.status_code} para {url}: {resp.text[:300]}")
         return None
     except requests.RequestException as e:
         logger.warning(f"Erro ao usar ZenRows para {url}: {e}")
@@ -311,6 +316,14 @@ def debug_fetch(url: str) -> dict:
 
                 # Confirma se há anúncios reais na página (evidência independente de seletor)
                 resultado["ocorrencias_de_R$"] = html_zenrows.count("R$")
+
+                # Amostra do meio do documento (não só o <head>), para inspeção visual real
+                meio = len(html_zenrows) // 3
+                resultado["amostra_html_zenrows"] = html_zenrows[meio:meio + 1500]
+
+                # Título da página, útil para saber se caiu numa página de erro/redirecionamento
+                title_tag = soup.find("title")
+                resultado["titulo_pagina_zenrows"] = title_tag.get_text() if title_tag else None
 
                 # Extrai uma amostra de classes CSS reais, filtrando por termos prováveis
                 all_classes = set()
