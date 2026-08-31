@@ -609,10 +609,21 @@ def scrape_all_sources(cidade_slug: str, filtros_slug: str, neighborhood: str, c
     Roda as 3 fontes e combina os resultados. Cada fonte é isolada em seu
     próprio try/except — se uma falhar, as outras continuam normalmente.
     zap_bairros: lista de bairros para o Zap (obrigatório buscar por bairro).
-    Se não informado, usa uma lista padrão dos bairros mais buscados no protótipo.
+    Se não informado, usa uma lista ampla cobrindo a maior parte de Salvador —
+    os 5 bairros originais (caminho-das-arvores, candeal, itaigara, costa-azul,
+    cabula) cobriam só uma fração pequena da cidade, o que fazia a busca parecer
+    ter "poucas opções" mesmo com o Zap sendo a maior fonte de anúncios.
     """
     if zap_bairros is None:
-        zap_bairros = ["caminho-das-arvores", "candeal", "itaigara", "costa-azul", "cabula"]
+        zap_bairros = [
+            "caminho-das-arvores", "candeal", "itaigara", "costa-azul", "cabula",
+            "pituba", "barra", "graca", "armacao", "imbui", "piata",
+            "stella-maris", "boca-do-rio", "rio-vermelho", "ondina", "federacao",
+            "brotas", "cajazeiras", "liberdade", "pernambues", "vila-laura",
+            "nazare", "comercio", "pituacu", "paralela", "sao-marcos",
+            "sussuarana", "alphaville", "amaralina", "canela", "horto-florestal",
+            "jaguaribe", "patamares",
+        ]
 
     todos = []
     resumo_por_fonte = {}

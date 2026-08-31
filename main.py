@@ -121,7 +121,7 @@ def list_apartments(
     min_area: Optional[float] = Query(None),
     min_price: Optional[float] = Query(None),
     max_price: Optional[float] = Query(None),
-    rooms: Optional[int] = Query(None),
+    rooms: Optional[int] = Query(None, description="Quantidade MÍNIMA de quartos (retorna esse valor ou mais)"),
     min_parking: Optional[int] = Query(None),
     work_address: Optional[str] = Query(None, description="Endereço de referência do trabalho, informado pelo usuário"),
     max_distance_work_km: Optional[float] = Query(None, description="Filtro de distância até o trabalho, em km"),
@@ -149,7 +149,7 @@ def list_apartments(
     if max_price is not None:
         query = query.filter(Apartment.price <= max_price)
     if rooms is not None:
-        query = query.filter(Apartment.rooms == rooms)
+        query = query.filter(Apartment.rooms >= rooms)
     if min_parking is not None:
         query = query.filter(Apartment.parking_spaces >= min_parking)
     if below_market_only:
