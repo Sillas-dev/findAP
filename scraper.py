@@ -15,6 +15,7 @@ import json
 import time
 import os
 import logging
+import unicodedata
 from typing import Optional
 import requests
 from bs4 import BeautifulSoup
@@ -65,9 +66,29 @@ BAIRROS_SALVADOR = [
     "Patamares", "Itaigara", "Cabula", "Candeal", "Pituba", "Barra", "Graça",
     "Armação", "Imbuí", "Piatã", "Stella Maris", "Boca do Rio", "Rio Vermelho",
     "Ondina", "Federação", "Brotas", "Cajazeiras", "Liberdade", "Pernambués",
-    "Vila Laura", "Nazaré", "Comércio", "Pituaçu", "Paralela", "Imbuí",
+    "Vila Laura", "Nazaré", "Comércio", "Pituaçu", "Paralela",
     "São Marcos", "Sussuarana", "Alphaville", "Amaralina", "Canela",
 ]
+
+
+def slugify_bairro(nome: str) -> str:
+    """
+    Gera o slug de URL usado pelo Zap Imóveis a partir do nome "bonito" do
+    bairro: minúsculas, sem acento, espaços viram hífen (ex: "Caminho das
+    Árvores" -> "caminho-das-arvores", padrão validado manualmente no protótipo).
+    """
+    sem_acento = "".join(
+        c for c in unicodedata.normalize("NFKD", nome) if not unicodedata.combining(c)
+    )
+    return sem_acento.lower().replace(" ", "-").replace("'", "")
+
+
+# Mapa slug -> nome correto (com acento) de cada bairro conhecido. Usado para o
+# Zap não gravar o bairro no banco como "Caminho Das Arvores" (sem acento, capitalização
+# genérica) enquanto o ImovelWeb grava o mesmo bairro como "Caminho das Árvores" —
+# isso fragmentava a média de preço por bairro (Fase 4) em dois grupos separados
+# para o mesmo lugar.
+ZAP_BAIRRO_SLUG_TO_NOME = {slugify_bairro(b): b for b in BAIRROS_SALVADOR}
 
 
 def extract_neighborhood(text: str, fallback: str) -> str:
@@ -586,7 +607,7 @@ def scrape_zap(bairros: list[str], city: str = "Salvador", rooms: int = 3) -> li
         soup = BeautifulSoup(html, "html.parser")
         cards = find_cards_by_link_pattern(soup, href_regex=r"/imovel/.*-id-\d+")
 
-        bairro_nome = bairro_slug.replace("-", " ").title()
+        bairro_nome = ZAP_BAIRRO_SLUG_TO_NOME.get(bairro_slug, bairro_slug.replace("-", " ").title())
         count_bairro = 0
         for link, container in cards:
             item = parse_generic_card(link, container, source="zap", base_url=ZAP_BASE)
@@ -609,21 +630,16 @@ def scrape_all_sources(cidade_slug: str, filtros_slug: str, neighborhood: str, c
     Roda as 3 fontes e combina os resultados. Cada fonte é isolada em seu
     próprio try/except — se uma falhar, as outras continuam normalmente.
     zap_bairros: lista de bairros para o Zap (obrigatório buscar por bairro).
-    Se não informado, usa uma lista ampla cobrindo a maior parte de Salvador —
-    os 5 bairros originais (caminho-das-arvores, candeal, itaigara, costa-azul,
-    cabula) cobriam só uma fração pequena da cidade, o que fazia a busca parecer
-    ter "poucas opções" mesmo com o Zap sendo a maior fonte de anúncios.
+    Se não informado, busca em todos os bairros conhecidos em BAIRROS_SALVADOR
+    (gerados via slugify_bairro) — os 5 bairros originais (caminho-das-arvores,
+    candeal, itaigara, costa-azul, cabula) cobriam só uma fração pequena da
+    cidade, o que fazia a busca parecer ter "poucas opções" mesmo com o Zap
+    sendo a maior fonte de anúncios. BAIRROS_SALVADOR ainda não cobre os 171
+    bairros oficiais de Salvador — ver plano de expansão por distância do
+    endereço de trabalho antes de simplesmente adicionar todos.
     """
     if zap_bairros is None:
-        zap_bairros = [
-            "caminho-das-arvores", "candeal", "itaigara", "costa-azul", "cabula",
-            "pituba", "barra", "graca", "armacao", "imbui", "piata",
-            "stella-maris", "boca-do-rio", "rio-vermelho", "ondina", "federacao",
-            "brotas", "cajazeiras", "liberdade", "pernambues", "vila-laura",
-            "nazare", "comercio", "pituacu", "paralela", "sao-marcos",
-            "sussuarana", "alphaville", "amaralina", "canela", "horto-florestal",
-            "jaguaribe", "patamares",
-        ]
+        zap_bairros = list(ZAP_BAIRRO_SLUG_TO_NOME.keys())
 
     todos = []
     resumo_por_fonte = {}
