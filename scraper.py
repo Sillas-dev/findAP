@@ -62,13 +62,178 @@ AMENITY_KEYWORDS = [
 # agruparia imóveis de bairros muito diferentes numa única "média geral".
 # Lista não exaustiva — bairros fora dela caem no valor padrão informado na busca.
 BAIRROS_SALVADOR = [
+    # Lista original, validada manualmente no protótipo (mantida — alguns destes
+    # não fazem parte da divisão oficial de 171 bairros usada abaixo, mas já
+    # geram resultados reais no Zap/ImovelWeb).
     "Caminho das Árvores", "Horto Florestal", "Costa Azul", "Jaguaribe",
     "Patamares", "Itaigara", "Cabula", "Candeal", "Pituba", "Barra", "Graça",
     "Armação", "Imbuí", "Piatã", "Stella Maris", "Boca do Rio", "Rio Vermelho",
     "Ondina", "Federação", "Brotas", "Cajazeiras", "Liberdade", "Pernambués",
     "Vila Laura", "Nazaré", "Comércio", "Pituaçu", "Paralela",
     "São Marcos", "Sussuarana", "Alphaville", "Amaralina", "Canela",
+    # Restante da divisão oficial dos 171 bairros de Salvador (Prefeituras-Bairro
+    # I a X, fonte: Wikipédia "Subdivisões de Salvador", 2026-08-30/31) — adicionado
+    # para cobertura exaustiva durante a fase de validação (instrução do usuário:
+    # buscar em todos os bairros de Salvador antes de expandir para o Brasil).
+    # Bairros claramente sem mercado residencial (ilhas, aeroporto, órgão público,
+    # zona de logística) foram deixados de fora — ver EXCLUDED_BAIRROS_NAO_RESIDENCIAIS.
+    "Acupe", "Barbalho", "Barris", "Boa Vista de Brotas", "Centro",
+    "Cosme de Farias", "Engenho Velho de Brotas", "Garcia", "Luiz Anselmo",
+    "Matatu", "Santo Agostinho", "Saúde",
+    "Alto da Terezinha", "Coutos", "Fazenda Coutos", "Itacaranha",
+    "Nova Constituinte", "Paripe", "Periperi", "Plataforma", "Praia Grande",
+    "Rio Sena",
+    "Boca da Mata", "Cajazeiras II", "Cajazeiras IV", "Cajazeiras V",
+    "Cajazeiras VI", "Cajazeiras X", "Cajazeiras XI", "Castelo Branco",
+    "Dom Avelar", "Fazenda Grande I", "Fazenda Grande II", "Fazenda Grande IV",
+    "Jaguaripe I",
+    "Alto do Coqueirinho", "Areia Branca", "Bairro da Paz", "Cassange",
+    "Itinga", "Itapuã", "Jardim das Margaridas", "Mussurunga",
+    "Boa Viagem", "Bonfim", "Caminho de Areia", "Lobato", "Mangueira", "Mares",
+    "Massaranduba", "Monte Serrat", "Ribeira", "Roma", "Santa Luzia", "Uruguai",
+    "Vila Ruy Barbosa", "Jardim Cruzeiro",
+    "Alto das Pombas", "Calabar", "Chapada do Rio Vermelho",
+    "Nordeste de Amaralina", "Santa Cruz", "Stiep", "Vale das Pedrinhas",
+    "Alto do Cabrito", "Baixa de Quintas", "Boa Vista de São Caetano",
+    "Bom Juá", "Capelinha", "Cidade Nova", "Curuzu", "Fazenda Grande do Retiro",
+    "IAPI", "Lapinha", "Marechal Rondon", "Pero Vaz", "Retiro", "São Caetano",
+    "Arenoso", "Arraial do Retiro", "Barreiras", "Tancredo Neves", "Cabula VI",
+    "Doron", "Engomadeira", "Mata Escura", "Narandiba", "Nova Sussuarana",
+    "Novo Horizonte", "Resgate", "Saboeiro", "Saramandaia",
+    "Canabrava", "Jardim Cajazeiras", "Novo Marotinho", "Pau da Lima",
+    "São Rafael", "Sete de Abril", "Trobogy", "Vale dos Lagos",
+    "Palestina",
+    "Centro Histórico", "Macaúbas", "Santo Antônio", "Tororó",
+    "São João do Cabrito", "São Tomé", "Águas Claras", "Vila Canária",
+    "Nova Esperança", "São Cristóvão", "Calçada", "Engenho Velho da Federação",
+    "Jardim Armação", "Vitória", "Caixa D'Água", "Campinas de Pirajá",
+    "Pau Miúdo", "Santa Mônica", "Calabetão", "Jardim Santo Inácio",
+    "São Gonçalo do Retiro", "Jardim Nova Esperança", "Nova Brasília",
+    "Pirajá", "Valéria",
 ]
+
+# Coordenadas (lat, lon) de cada bairro conhecido — geocodificadas via Nominatim
+# em 2026-08-30/31 (uma única vez, respeitando 1 req/s; ver reference_salvador_bairros
+# na memória do projeto para o processo). Usadas para ordenar/filtrar por distância
+# do trabalho sem precisar geocodificar de novo a cada scrape. Nem todo bairro em
+# BAIRROS_SALVADOR tem coordenada aqui (alguns da lista original nunca foram
+# geocodificados) — trate ausência como "distância desconhecida", não erro.
+BAIRRO_COORDS: dict[str, tuple[float, float]] = {
+    "Acupe": (-12.9930829, -38.4940558), "Barbalho": (-12.9667549, -38.5001135),
+    "Barris": (-12.9865471, -38.5139275), "Boa Vista de Brotas": (-12.9829256, -38.5003987),
+    "Brotas": (-12.9881887, -38.4896543), "Candeal": (-12.9945748, -38.4813605),
+    "Centro": (-12.9866480, -38.5201085), "Cosme de Farias": (-12.9801002, -38.4890610),
+    "Engenho Velho de Brotas": (-12.9878992, -38.5014496), "Garcia": (-12.9924205, -38.5125908),
+    "Luiz Anselmo": (-12.9757196, -38.4855604), "Matatu": (-12.9715980, -38.4938709),
+    "Santo Agostinho": (-12.9746874, -38.4969203), "Saúde": (-12.9737370, -38.5090389),
+    "Vila Laura": (-12.9700833, -38.4879687), "Alto da Terezinha": (-12.8814840, -38.4772489),
+    "Coutos": (-12.8502501, -38.4684780), "Fazenda Coutos": (-12.8494996, -38.4636417),
+    "Itacaranha": (-12.8891259, -38.4820890), "Nova Constituinte": (-12.8530218, -38.4749098),
+    "Paripe": (-12.8380062, -38.4692031), "Periperi": (-12.8633545, -38.4736719),
+    "Plataforma": (-12.9004393, -38.4868515), "Praia Grande": (-12.8730561, -38.4756880),
+    "Rio Sena": (-12.8792492, -38.4783440), "Boca da Mata": (-12.9002501, -38.3875179),
+    "Cajazeiras II": (-12.8999380, -38.4081574), "Cajazeiras IV": (-12.8999380, -38.4081574),
+    "Cajazeiras V": (-12.9009639, -38.3954659), "Cajazeiras VI": (-12.8999380, -38.4081574),
+    "Cajazeiras X": (-12.8928614, -38.4114996), "Cajazeiras XI": (-12.8795528, -38.4062022),
+    "Castelo Branco": (-12.9654412, -38.5046017), "Dom Avelar": (-12.9030259, -38.4487354),
+    "Fazenda Grande I": (-12.8916116, -38.3938909), "Fazenda Grande II": (-12.8916116, -38.3938909),
+    "Fazenda Grande IV": (-12.8916116, -38.3938909), "Jaguaripe I": (-12.9588357, -38.3954898),
+    "Alto do Coqueirinho": (-12.9414165, -38.3714894), "Areia Branca": (-12.8475541, -38.3592950),
+    "Bairro da Paz": (-12.9290087, -38.3749638), "Boca do Rio": (-12.9774493, -38.4279508),
+    "Cassange": (-12.8751229, -38.3798065), "Itinga": (-12.8802195, -38.3599894),
+    "Jardim das Margaridas": (-12.8989638, -38.3580566), "Mussurunga": (-12.9161292, -38.3750491),
+    "Patamares": (-12.9469192, -38.4018961), "Stella Maris": (-12.9377602, -38.3346758),
+    "Boa Viagem": (-12.9317767, -38.5117881), "Bonfim": (-12.9256811, -38.5082913),
+    "Caminho de Areia": (-12.9306224, -38.5045481), "Lobato": (-12.9115261, -38.4805430),
+    "Mangueira": (-12.9234136, -38.4990978), "Mares": (-12.9419032, -38.5011006),
+    "Massaranduba": (-12.9280617, -38.4965471), "Monte Serrat": (-12.9285763, -38.5135946),
+    "Ribeira": (-12.9160999, -38.4968986), "Roma": (-12.9349632, -38.5038883),
+    "Santa Luzia": (-12.9329965, -38.4886545), "Uruguai": (-12.9345334, -38.4950228),
+    "Vila Ruy Barbosa": (-12.9316013, -38.4994948), "Jardim Cruzeiro": (-12.9316013, -38.4994948),
+    "Alto das Pombas": (-13.0011662, -38.5137112), "Amaralina": (-13.0122314, -38.4733469),
+    "Barra": (-13.0064362, -38.5279010), "Calabar": (-13.0032510, -38.5152233),
+    "Canela": (-12.9929978, -38.5210151), "Chapada do Rio Vermelho": (-13.0053325, -38.4802303),
+    "Costa Azul": (-12.9926694, -38.4447027), "Itaigara": (-12.9918205, -38.4649057),
+    "Nordeste de Amaralina": (-13.0098052, -38.4735460), "Ondina": (-13.0103980, -38.5116990),
+    "Pituba": (-12.9992595, -38.4554978), "Rio Vermelho": (-13.0100607, -38.4899605),
+    "Santa Cruz": (-13.0042766, -38.4754641), "Stiep": (-12.9802595, -38.4473109),
+    "Vale das Pedrinhas": (-13.0083485, -38.4823472), "Alto do Cabrito": (-12.9110698, -38.4755217),
+    "Baixa de Quintas": (-12.9637829, -38.4906761), "Boa Vista de São Caetano": (-12.9347827, -38.4861699),
+    "Bom Juá": (-12.7611510, -38.6432934), "Capelinha": (-12.9307394, -38.4848672),
+    "Cidade Nova": (-12.9639484, -38.4849824), "Curuzu": (-12.9457424, -38.4867286),
+    "Fazenda Grande do Retiro": (-12.9426093, -38.4800551), "IAPI": (-12.9528018, -38.4800883),
+    "Lapinha": (-12.9553714, -38.4991490), "Liberdade": (-12.9466620, -38.4939829),
+    "Marechal Rondon": (-12.9124412, -38.4707046), "Pero Vaz": (-12.9499279, -38.4886385),
+    "Retiro": (-12.9560021, -38.4721285), "São Caetano": (-12.9305081, -38.4760923),
+    "Arenoso": (-12.9479091, -38.4421285), "Arraial do Retiro": (-12.9444672, -38.4665888),
+    "Barreiras": (-12.9440749, -38.4583423), "Tancredo Neves": (-12.9474077, -38.4536354),
+    "Cabula": (-12.9564940, -38.4635954), "Cabula VI": (-12.9554366, -38.4382870),
+    "Doron": (-12.9604251, -38.4396215), "Engomadeira": (-12.9483460, -38.4559128),
+    "Mata Escura": (-12.9322976, -38.4583242), "Narandiba": (-12.9619553, -38.4378450),
+    "Nova Sussuarana": (-12.9350792, -38.4376490), "Novo Horizonte": (-12.9409831, -38.4393910),
+    "Resgate": (-12.9616245, -38.4638779), "Saboeiro": (-12.9579503, -38.4472232),
+    "Saramandaia": (-12.9741514, -38.4686548), "Sussuarana": (-12.9347768, -38.4460352),
+    "Canabrava": (-12.9252075, -38.4198037), "Jardim Cajazeiras": (-12.9173516, -38.4498777),
+    "Novo Marotinho": (-12.9155472, -38.4248704), "Pau da Lima": (-12.9227779, -38.4451715),
+    "São Marcos": (-12.9272835, -38.4365801), "São Rafael": (-12.9230294, -38.4358982),
+    "Sete de Abril": (-12.9190700, -38.4344789), "Trobogy": (-12.9329398, -38.4008646),
+    "Vale dos Lagos": (-12.9332864, -38.4221613), "Palestina": (-12.8735643, -38.4164029),
+    "Alphaville": (-12.9407521, -38.4010499), "Centro Histórico": (-12.9714690, -38.5083536),
+    "Comércio": (-12.9698170, -38.5112709), "Macaúbas": (-12.9653855, -38.4958248),
+    "Santo Antônio": (-12.9654964, -38.5036352), "Nazaré": (-12.9784418, -38.5076399),
+    "Tororó": (-12.9846057, -38.5092005), "São João do Cabrito": (-12.9000943, -38.4766666),
+    "São Tomé": (-12.8262799, -38.4801400), "Águas Claras": (-12.8961271, -38.4445992),
+    "Vila Canária": (-12.9138910, -38.4438943), "Imbuí": (-12.9645173, -38.4362485),
+    "Itapuã": (-12.9424180, -38.3587400), "Nova Esperança": (-12.8426632, -38.3729276),
+    "Piatã": (-12.9483348, -38.3873458), "Pituaçu": (-12.9651749, -38.4143371),
+    "São Cristóvão": (-12.9082767, -38.3610352), "Calçada": (-12.9448131, -38.4988618),
+    "Caminho das Árvores": (-12.9824528, -38.4583033),
+    "Engenho Velho da Federação": (-13.0002947, -38.4965017), "Federação": (-12.9952959, -38.5070634),
+    "Graça": (-12.9994381, -38.5226463), "Jardim Armação": (-12.9860764, -38.4386526),
+    "Vitória": (-12.9929784, -38.5263187), "Caixa D'Água": (-12.9581223, -38.4941411),
+    "Campinas de Pirajá": (-12.9155542, -38.4623940), "Pau Miúdo": (-12.9599036, -38.4808080),
+    "Santa Mônica": (-12.9487500, -38.4840299), "Calabetão": (-12.9326581, -38.4697268),
+    "Jardim Santo Inácio": (-12.9293279, -38.4608991), "Pernambués": (-12.9699369, -38.4661334),
+    "São Gonçalo do Retiro": (-12.9519704, -38.4684976), "Jardim Nova Esperança": (-12.9146517, -38.4179705),
+    "Nova Brasília": (-12.9400134, -38.3759258), "Pirajá": (-12.9243223, -38.4675301),
+    "Valéria": (-12.8587545, -38.4493824),
+}
+
+# Bairros que existem oficialmente mas não têm mercado residencial de apartamentos
+# (ilhas, aeroporto, órgão público, zona de logística) — nunca adicionados a
+# BAIRROS_SALVADOR, então nunca entram no scrape do Zap. Documentado aqui só
+# para não serem re-adicionados por engano numa futura expansão da lista.
+EXCLUDED_BAIRROS_NAO_RESIDENCIAIS = [
+    "Ilha dos Frades", "Ilha de Maré", "Ilha do Bom Jesus dos Passos",
+    "Aeroporto", "Centro Administrativo da Bahia", "Porto Seco Pirajá",
+]
+
+
+def bairros_por_distancia(bairros: list[str], work_lat: float, work_lng: float,
+                           max_distance_km: Optional[float] = None) -> list[str]:
+    """
+    Ordena `bairros` pela distância (Haversine) até o endereço de trabalho, do
+    mais perto pro mais longe. Se `max_distance_km` for informado, remove os
+    bairros mais distantes que isso. Bairros sem coordenada conhecida em
+    BAIRRO_COORDS ficam no final da lista (ordem original), sem serem
+    descartados — "sem distância calculada" não é o mesmo que "muito longe".
+
+    Não usado por padrão em scrape_all_sources (fase de validação busca em
+    todos os bairros de Salvador) — existe pronta para quando o projeto migrar
+    para escala nacional, onde escanear toda cidade deixa de ser viável e faz
+    mais sentido priorizar/limitar por proximidade do trabalho do usuário.
+    """
+    from distance import haversine_km
+
+    com_coord = [b for b in bairros if b in BAIRRO_COORDS]
+    sem_coord = [b for b in bairros if b not in BAIRRO_COORDS]
+
+    com_coord.sort(key=lambda b: haversine_km(work_lat, work_lng, *BAIRRO_COORDS[b]))
+
+    if max_distance_km is not None:
+        com_coord = [b for b in com_coord if haversine_km(work_lat, work_lng, *BAIRRO_COORDS[b]) <= max_distance_km]
+
+    return com_coord + sem_coord
 
 
 def slugify_bairro(nome: str) -> str:
