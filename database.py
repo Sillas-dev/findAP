@@ -10,7 +10,11 @@ import os
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./aptofinder.db")
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+# pool_pre_ping: testa a conexão antes de reutilizá-la do pool e a descarta/reabre
+# se estiver morta. Necessário porque o Neon (Postgres gratuito) suspende o
+# compute por inatividade — sem isso, a primeira query após o banco "acordar"
+# falha com "SSL connection has been closed unexpectedly" em vez de reconectar.
+engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
